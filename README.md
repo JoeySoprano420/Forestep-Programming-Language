@@ -3749,3 +3749,215 @@ Its sweet spot is industrial clarity with native force.
 
 Its biggest strength is that it lets code say more of what it means while still executing like it came to work in steel-toe boots.
 
+⭐️⭐️⭐️
+
+-- 1. Hello World
+module HelloWorld
+
+entry main
+show "Hello, World"
+end
+
+end
+
+
+-- 2. Variables and Arithmetic
+module ArithmeticDemo
+
+entry main
+set x to 10
+set y to 20
+set total to x plus y
+show total
+end
+
+end
+
+
+-- 3. Conditionals
+module ConditionalDemo
+
+entry main
+set a to 15
+set b to 10
+
+when a is greater than b
+show "a is greater"
+end
+
+end
+
+
+-- 4. While Loop
+module LoopDemo
+
+entry main
+set count to 5
+
+repeat while count is greater than 0
+show count
+set count to count minus 1
+end
+
+end
+
+
+-- 5. For-Each Loop
+module ForEachDemo
+
+entry main
+make values as smart_array of int32
+helper append using values and 3
+helper append using values and 6
+helper append using values and 9
+
+for each item in values
+show item
+end
+
+end
+
+
+-- 6. Helper Function
+module HelperDemo
+
+helper square using x as int32 returns int32
+return x times x
+end
+
+entry main
+set result to helper square using 12
+show result
+end
+
+end
+
+
+-- 7. Record + Enum + Object-like Pattern
+module UserProfileDemo
+
+enum Rank
+case Bronze
+case Silver
+case Gold
+end
+
+record User
+field name as text
+field score as real64
+field rank as Rank
+end
+
+entry main
+make users as smart_array of User
+show "profiles ready"
+end
+
+end
+
+
+-- 8. Smart Array + Numeric Average
+module SmartArrayAverage
+
+memory Data delegates Heap
+
+helper sum_array using arr as smart_array returns real64
+set total to 0.0
+for each item in arr
+set total to total plus item
+end
+return total
+end
+
+helper average_array using arr as smart_array returns real64
+set s to helper sum_array using arr
+set n to helper length using arr
+return s divided by n
+end
+
+entry main
+make scores as smart_array of real64 in Data
+helper append using scores and 9.25
+helper append using scores and 8.75
+helper append using scores and 10.0
+
+show helper average_array using scores
+end
+
+end
+
+
+-- 9. Compile-Time Eval
+module EvalDemo
+
+entry main
+eval 2 plus 3 into a
+eval a times 4 into b
+show b
+end
+
+end
+
+
+-- 10. Numeric Kernel (Energy = m * c^2)
+module EnergyKernel
+
+helper energy using m as real64 and c as real64 returns real64
+return m times c times c
+end
+
+entry main
+set e to helper energy using 2.0 and 3.0
+show e
+end
+
+end
+
+
+-- 11. Error-Handling Equivalent (Forestep-style)
+-- Forestep does not have try/keep/discard, so we encode logic explicitly.
+
+module ErrorHandlingDemo
+
+record ParseResult
+field ok as bool
+field value as int32
+end
+
+helper parse_int using text_value as text returns ParseResult
+-- Fake parser: always succeeds with 42
+set r to ParseResult
+set r ok to true
+set r value to 42
+return r
+end
+
+entry main
+set result to helper parse_int using "42"
+
+when result ok is equal to true
+show result value
+end
+
+when result ok is equal to false
+show "parse failed"
+end
+
+end
+
+end
+
+
+-- 12. Unsafe Intrensics
+module UnsafeDemo
+
+entry main
+intrinsic allow unchecked_index
+intrinsic allow alias_break
+intrinsic unreachable
+end
+
+end
+
+⭐️⭐️⭐️
+
