@@ -1,0 +1,402 @@
+## 1. Forestep compiler architecture diagram
+
+### 1.1 High‑level pipeline
+
+```text
+Forestep .fstp source
+        │
+        ▼
+[1] Lexical Frontend (Token Diagram Web)
+        │
+        ▼
+[2] Phrase-Aware Parser
+        │
+        ▼
+[3] Surface → Canonical Normalizer
+        │
+        ▼
+[4] Semantic Resolution & Type Indexing
+        │
+        ▼
+[5] Eval Engine (Compile-Time Execution)
+        │
+        ▼
+[6] Execution Path Graph Builder
+        │
+        ▼
+[7] Optimization Pipeline
+        │
+        ▼
+[8] Backend Lowering
+        │
+        ▼
+[9] Object / Executable Emission
+```
+
+### 1.2 Detailed component breakdown
+
+**[1] Lexical Frontend (Token Diagram Web)**  
+- **Inputs:** UTF‑8 source, newline‑structured.  
+- **Outputs:** Token Diagram Web, not just a flat token list.  
+- **Responsibilities:**
+  - **Tokenization:** identifiers, literals, keywords, structural tokens (`NL`, `end`, `--`).  
+  - **Diagram construction:**  
+    - token nodes  
+    - adjacency edges  
+    - ambiguity corridors (e.g., phrase families that could parse multiple ways)  
+  - **Context hints:** phrase‑family hints (assignment, construction, helper call, etc.).
+
+**[2] Phrase‑Aware Parser**  
+- **Inputs:** Token Diagram Web.  
+- **Outputs:** Ranked parse candidates → chosen canonical syntax tree.  
+- **Responsibilities:**
+  - Use adjacency/weights from the diagram web to build candidate parse trees.  
+  - Rank candidates by:
+    - phrase registry legality  
+    - minimal ambiguity  
+    - structural consistency (newline, `end` closure).  
+  - Emit a **Canonical Syntax Tree (CST)**, not raw surface AST.
+
+**[3] Surface → Canonical Normalizer**  
+- **Inputs:** CST with surface phrases.  
+- **Outputs:** **Canonical Semantic IR** (phrase classes).  
+- **Responsibilities:**
+  - Map sentence forms into canonical operations:
+    - `set x to y` → assignment node  
+    - `make x as Type` → construction node  
+    - `when a is greater than b` → conditional node  
+    - `helper clamp using value and low and high` → helper‑call node  
+  - Collapse synonyms into a single canonical form.  
+  - Enforce **phrase registry law**: every statement must land in a registered semantic class.
+
+**[4] Semantic Resolution & Type Indexing**  
+- **Inputs:** Canonical Semantic IR.  
+- **Outputs:** Typed IR with **Type Indices** attached.  
+- **Responsibilities:**
+  - Name resolution (modules, helpers, records, enums, memory delegates).  
+  - Type inference and checking:
+    - primitives, records, enums, arrays, smart arrays.  
+  - Assign **Type Index** to every type:
+    - used for overloads, specialization, layout, helper dispatch, optimization ranking.  
+  - Build symbol tables and environment for eval and helpers.
+
+**[5] Eval Engine (Compile‑Time Execution)**  
+- **Inputs:** Typed IR + semantic environment.  
+- **Outputs:** Partially reduced IR with constants, shapes, mappings resolved.  
+- **Responsibilities:**
+  - Identify **eval nodes**:
+    - constant eval  
+    - type eval  
+    - helper eval  
+    - array shape eval  
+    - enum map eval  
+  - Execute them in a **restricted, deterministic compile‑time VM**:
+    - only pure, side‑effect‑controlled helpers allowed  
+    - no runtime I/O, no UB intrensics.  
+  - Replace eval nodes with concrete typed values / structures.
+
+**[6] Execution Path Graph Builder**  
+- **Inputs:** Reduced typed IR.  
+- **Outputs:** **Execution Path Graph (EPG)**.  
+- **Responsibilities:**
+  - Nodes: entry, value, branch, eval (residual), helper, array transform, loop, merge, barrier, exit.  
+  - Edges: data dependencies, control flow, memory delegate constraints.  
+  - Enforce **Path Law**:
+    - arrangement follows dependency truth, not source order.  
+  - Annotate nodes with:
+    - type stability  
+    - delegate info  
+    - concurrency legality hints.
+
+**[7] Optimization Pipeline**  
+Apply in the spec’s priority order:
+
+1. **Legality** (no illegal transforms).  
+2. **Semantic correctness**.  
+3. **Type stability**.  
+4. **Path minimization** (dead code, redundant paths).  
+5. **Helper inlining** (where profitable).  
+6. **Eval collapse** (late opportunities).  
+7. **Float specialization** (real32/real64 math tuning).  
+8. **Smart‑array specialization** (layout, bounds, delegates).  
+9. **Vectorization** (SIMD‑friendly regions).  
+10. **Asymmetric reordering** (safe reordering under dependency constraints).  
+11. **Backend lowering refinement** (target‑specific tweaks).
+
+**[8] Backend Lowering**  
+- Lower EPG + typed IR into:
+  - either a custom IR  
+  - or LLVM IR  
+  - or direct assembler.  
+- Preserve:
+  - calling conventions  
+  - C ABI for FFI  
+  - memory delegate semantics (stack/heap/arena).
+
+**[9] Object / Executable Emission**  
+- Emit:
+  - `.obj`, `.lib`, `.dll`, `.exe` (PE/COFF, Win64).  
+- Link:
+  - Forestep runtime (if any)  
+  - C libraries  
+  - intrensic stubs.
+
+---
+
+## 2. How a self‑hosted Forestep compiler could be built
+
+Think in **three generations**.
+
+### 2.1 Generation 0: C++ “seed” compiler
+
+- Implement the full pipeline above in **C++** (as your spec states).  
+- This is the **trusted seed**:
+  - defines the canonical semantics  
+  - defines the ABI and codegen behavior  
+  - defines eval rules and UB intrensics.
+
+### 2.2 Generation 1: Forestep front‑end in Forestep
+
+Goal: move **surface → canonical → semantic** into Forestep itself.
+
+**Pieces to write in Forestep:**
+
+1. **Lexer + Token Diagram Web builder**
+   - Implement tokenization and diagram construction as helpers and procedures.  
+   - Use smart arrays for token lists and adjacency edges.  
+   - Use enums for token kinds, phrase families, and ambiguity markers.
+
+2. **Parser + Phrase Registry**
+   - Implement a parser that consumes the token diagram web and produces a CST.  
+   - Implement phrase registry as:
+     - enums for phrase classes  
+     - helpers that validate and normalize phrases.  
+
+3. **Normalizer**
+   - Forestep code that maps surface phrases to canonical semantic nodes.  
+   - This is a perfect use case for:
+     - records (for node types)  
+     - enums (for node kinds)  
+     - helpers (for normalization rules).
+
+4. **Semantic + Type Indexing**
+   - Implement symbol tables as smart arrays of records.  
+   - Implement type indexing as:
+     - a global registry (smart array of Type records)  
+     - helpers to allocate and look up type indices.  
+
+5. **Eval Engine Core**
+   - Implement a small, pure, Forestep‑level interpreter for a restricted IR subset.  
+   - This interpreter itself is compiled by the C++ seed compiler.
+
+**How it runs:**
+
+- The C++ seed compiler:
+  - compiles the Forestep compiler front‑end written in Forestep  
+  - links it with the existing C++ backend.  
+- Now you have a **hybrid compiler**:
+  - front‑end in Forestep  
+  - backend in C++.
+
+### 2.3 Generation 2: Self‑hosting proper
+
+Next step: move more of the backend into Forestep.
+
+1. **IR definition in Forestep**
+   - Define IR node types as records + enums.  
+   - Use smart arrays for IR sequences and graphs.
+
+2. **Execution Path Graph builder in Forestep**
+   - Build EPG from canonical IR using Forestep helpers.  
+
+3. **Optimization passes in Forestep**
+   - Each optimization pass is a helper/procedure over IR graphs.  
+   - Use eval for compile‑time configuration and specialization.
+
+4. **Backend lowering in Forestep**
+   - Option A: Forestep emits LLVM IR text or bitcode.  
+   - Option B: Forestep emits assembly text.  
+   - Option C: Forestep emits a custom binary IR consumed by a tiny C++ emitter.
+
+At this point:
+
+- Forestep compiler is mostly written in Forestep.  
+- A minimal C++ “shim” might remain:
+  - for OS integration  
+  - for final object emission  
+  - or even that can be replaced by Forestep + system calls.
+
+### 2.4 Trust chain and bootstrapping
+
+- **Stage 0:** C++ compiler builds seed Forestep compiler.  
+- **Stage 1:** Seed Forestep compiler builds the Forestep compiler written in Forestep.  
+- **Stage 2:** Forestep‑built compiler rebuilds itself; compare binaries / IR to validate stability.  
+- This is analogous to Rust’s and Zig’s multi‑stage bootstrap, but with your sentence‑oriented surface and eval‑heavy semantics.
+
+---
+
+## 3. How eval behaves during bootstrapping
+
+Eval is your secret weapon here.
+
+### 3.1 Roles of eval in the compiler itself
+
+When the compiler is written in Forestep, **eval** can be used to:
+
+- **Precompute tables:**
+  - keyword maps  
+  - operator precedence tables  
+  - phrase registry mappings  
+  - type index registries.  
+
+- **Generate IR patterns:**
+  - eval helpers that build canonical node templates.  
+
+- **Shape and layout metadata:**
+  - array shapes for token buffers  
+  - enum → integer maps  
+  - delegate configurations.
+
+Example pattern:
+
+```fstp
+module PhraseRegistry
+
+enum PhraseClass
+case Assignment
+case Construction
+case Branch
+case Iteration
+case HelperCall
+case EvalCall
+case MemoryDirective
+case ConcurrencyDirective
+case IntrinsicCall
+end
+
+-- Build a lookup table at compile time
+helper phrase_class_for_keyword using name as text returns PhraseClass
+-- ... logic ...
+end
+
+entry init_registry
+eval helper build_phrase_table using PhraseClass into registry
+end
+
+end
+```
+
+Here:
+
+- `build_phrase_table` runs at **compile time** via `eval`.  
+- The resulting `registry` is a **constant** baked into the compiler binary.
+
+### 3.2 Constraints during bootstrap
+
+During bootstrap, eval must obey stricter rules:
+
+- **No UB intrensics** inside eval regions.  
+- **No runtime I/O** (no file/network access).  
+- **No dependence on target‑specific state** (eval must be target‑independent).  
+- Only:
+  - pure helpers  
+  - deterministic computations  
+  - structural transformations.
+
+This keeps the bootstrap deterministic and reproducible.
+
+### 3.3 Eval in multi‑stage compilation
+
+When you have:
+
+- C++ seed compiler  
+- Forestep compiler written in Forestep  
+
+Eval appears in two layers:
+
+1. **Eval executed by the C++ seed compiler**  
+   - When compiling the Forestep compiler itself.  
+   - Precomputes tables and structures used by the compiler.
+
+2. **Eval executed by the Forestep compiler**  
+   - When compiling user programs.  
+   - Same semantics, but now the engine is the Forestep implementation.
+
+You can validate correctness by:
+
+- Running the same Forestep source through:
+  - C++‑based eval engine  
+  - Forestep‑based eval engine  
+- Comparing:
+  - eval outputs  
+  - IR  
+  - final binaries.
+
+---
+
+## 4. Comparison with Zig and Rust bootstrap models
+
+### 4.1 Quick comparison table
+
+| Aspect                     | Forestep (intended)                                  | Zig                                           | Rust                                           |
+|---------------------------|------------------------------------------------------|-----------------------------------------------|-----------------------------------------------|
+| Surface style             | Sentence‑oriented, newline‑central                   | C‑like, explicit, low‑level                   | C‑family, expression‑oriented                 |
+| Core semantics            | Canonical phrase registry, type‑indexed              | Explicit types, comptime, no hidden runtime   | Strong static types, traits, borrow checker   |
+| Compile‑time execution    | `eval` nodes, helper‑based, semantic‑time            | `comptime` blocks, evaluated by compiler      | `const fn`, macros, limited CTFE              |
+| Bootstrap seed            | C++ semantic engine + C ABI                          | C++ compiler (historically), now self‑hosted  | Initially OCaml + C++, now Rust self‑hosted   |
+| Self‑hosting path         | Forestep front‑end + IR + backend in Forestep        | Zig compiler written in Zig                   | rustc written in Rust                         |
+| UB exposure               | Explicit intrensics only                             | Explicit `@ptrCast`, `@intToPtr`, etc.        | Unsafe blocks, intrinsics, but more guarded   |
+| Execution arrangement     | Execution Path Graph, dependency‑driven              | SSA‑like IR, LLVM backend                     | MIR → LLVM (or other backends)                |
+| Memory model              | Delegated (Stack/Heap/Arena via `memory` law)        | Explicit allocators, manual control           | Ownership/borrowing, RAII                     |
+
+### 4.2 Zig vs Forestep
+
+**Zig:**
+
+- Bootstrap story:
+  - Early Zig compiler written in C++  
+  - Gradually rewritten in Zig  
+  - Now largely self‑hosted.  
+- Compile‑time execution:
+  - `comptime` is a first‑class execution mode.  
+  - The compiler runs Zig code at compile time to generate types, values, and code.
+
+**Forestep parallels:**
+
+- Your `eval` is conceptually similar to Zig’s `comptime`:
+  - both are **statically analyzable**  
+  - both run user code during compilation  
+  - both can build tables, shapes, and IR patterns.  
+- Bootstrap path:
+  - C++ seed → Forestep front‑end → Forestep backend → fully self‑hosted.  
+- Difference:
+  - Forestep’s surface is sentence‑shaped and phrase‑registry‑driven.  
+  - Zig is more expression‑centric and C‑like.
+
+### 4.3 Rust vs Forestep
+
+**Rust:**
+
+- Bootstrap story:
+  - Early compiler in OCaml  
+  - Rewritten in Rust (rustc)  
+  - Now self‑hosted; uses multiple stages to validate.  
+- Compile‑time execution:
+  - `const fn` and CTFE for limited compile‑time evaluation.  
+  - Macros (declarative and procedural) for syntactic generation.  
+  - Heavy use of internal IRs (HIR, MIR) before LLVM.
+
+**Forestep parallels:**
+
+- Your **Execution Path Graph** is analogous to Rust’s MIR:
+  - a mid‑level, typed, control‑flow‑aware representation.  
+- Your **eval** is more central than Rust’s CTFE:
+  - you explicitly design eval as a core semantic feature, not an add‑on.  
+- Bootstrap path:
+  - similar multi‑stage trust chain:
+    - seed compiler → self‑hosted compiler → stage‑N validation.
+
+---
+
+
+
