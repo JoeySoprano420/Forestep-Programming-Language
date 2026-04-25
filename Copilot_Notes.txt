@@ -400,3 +400,345 @@ You can validate correctness by:
 
 
 
+module ForestepFrontend
+
+-- =========================================
+-- 1. Core token model
+-- =========================================
+
+enum TokenKind
+case Module
+case Entry
+case Record
+case Field
+case Enum
+case Case
+case Helper
+case Helpers
+case Procedure
+case Returns
+case Set
+case Make
+case Show
+case When
+case Else
+case Repeat
+case While
+case For
+case Each
+case In
+case Memory
+case Delegates
+case Align
+case Sync
+case Merge
+case Layer
+case Link
+case Eval
+case Intrinsic
+case Allow
+case As
+case To
+case Using
+case And
+case Is
+case Greater
+case Less
+case Equal
+case Than
+case Not
+case With
+case Over
+case Of
+case From
+case By
+case Into
+case SmartArray
+case Array
+
+case Int8
+case Int16
+case Int32
+case Int64
+case Uint8
+case Uint16
+case Uint32
+case Uint64
+case Real32
+case Real64
+case Float32
+case Float64
+case Bool
+case Text
+case Char
+case Void
+case True
+case False
+case End
+
+case Ident
+case IntLiteral
+case FloatLiteral
+case StringLiteral
+
+case Plus
+case Minus
+case Times
+case Divide
+
+case Newline
+case Eof
+end
+
+record Token
+field kind as TokenKind
+field lexeme as text
+field line as int32
+field column as int32
+end
+
+-- =========================================
+-- 2. Lexer state
+-- =========================================
+
+record Lexer
+field source as text
+field position as int32
+field line as int32
+field column as int32
+field tokens as smart_array of Token
+end
+
+memory LexMemory delegates Heap
+
+helper make_lexer using src as text returns Lexer
+make result as Lexer
+set result source to src
+set result position to 0
+set result line to 1
+set result column to 1
+make result tokens as smart_array of Token in LexMemory
+return result
+end
+
+-- =========================================
+-- 3. Token emission helpers (skeleton)
+-- =========================================
+
+helper emit_token using lex as Lexer and kind as TokenKind and lexeme as text
+returns void
+make t as Token
+set t kind to kind
+set t lexeme to lexeme
+set t line to lex line
+set t column to lex column
+helper append using lex tokens and t
+end
+
+helper is_at_end using lex as Lexer returns bool
+-- skeleton: compare position with length of source
+return false
+end
+
+helper advance_char using lex as Lexer returns char
+-- skeleton: move position, update line/column
+return ' '
+end
+
+helper peek_char using lex as Lexer returns char
+return ' '
+end
+
+-- =========================================
+-- 4. Keyword classification (matches ANTLR)
+-- =========================================
+
+helper keyword_kind using text_value as text returns TokenKind
+-- skeleton: chain of comparisons
+-- e.g. when text_value is equal to "module" return TokenKind Module
+return TokenKind Ident
+end
+
+-- =========================================
+-- 5. Main lexing loop (skeleton)
+-- =========================================
+
+helper lex_all using lex as Lexer returns smart_array of Token
+-- loop over characters, build tokens, push Newline, Eof
+-- recognize:
+--   identifiers / keywords
+--   ints / floats
+--   strings
+--   structural tokens (newline)
+--   skip whitespace and comments starting with "--"
+return lex tokens
+end
+
+-- =========================================
+-- 6. AST node model (minimal skeleton)
+-- =========================================
+
+enum NodeKind
+case Program
+case ModuleDecl
+case EntryDecl
+case RecordDecl
+case EnumDecl
+case HelperDecl
+case ProcedureDecl
+case Statement
+case Expr
+end
+
+record Node
+field kind as NodeKind
+field children as smart_array of Node
+field token as Token
+end
+
+memory AstMemory delegates Heap
+
+-- =========================================
+-- 7. Parser state
+-- =========================================
+
+record Parser
+field tokens as smart_array of Token
+field current as int32
+end
+
+helper make_parser using toks as smart_array of Token returns Parser
+make p as Parser
+set p tokens to toks
+set p current to 0
+return p
+end
+
+helper peek_token using p as Parser returns Token
+-- skeleton: return tokens[current]
+make dummy as Token
+set dummy kind to TokenKind Eof
+return dummy
+end
+
+helper match_token using p as Parser and kind as TokenKind returns bool
+-- skeleton: if peek kind matches, advance and return true
+return false
+end
+
+helper consume_token using p as Parser and kind as TokenKind and message as text
+returns Token
+-- skeleton: assert kind, advance, return previous
+make dummy as Token
+set dummy kind to kind
+return dummy
+end
+
+-- =========================================
+-- 8. Grammar entry points (mirroring ANTLR)
+-- =========================================
+
+-- program : moduleDecl+ EOF ;
+helper parse_program using p as Parser returns Node
+make prog as Node
+set prog kind to NodeKind Program
+make prog children as smart_array of Node in AstMemory
+
+-- while not EOF, parse moduleDecl
+-- append each module node to prog children
+
+return prog
+end
+
+-- moduleDecl : MODULE IDENT NL block END NL? ;
+helper parse_module_decl using p as Parser returns Node
+make node as Node
+set node kind to NodeKind ModuleDecl
+make node children as smart_array of Node in AstMemory
+
+helper consume_token using p and TokenKind Module and "expected 'module'"
+make name_tok as Token
+set name_tok to helper consume_token using p and TokenKind Ident and "expected module name"
+set node token to name_tok
+
+-- consume NL, parse block, consume END, optional NL
+-- attach block node as child
+
+return node
+end
+
+-- block : statement* ;
+helper parse_block using p as Parser returns Node
+make node as Node
+set node kind to NodeKind Statement
+make node children as smart_array of Node in AstMemory
+
+-- loop: while next token starts a statement, parse_statement and append
+
+return node
+end
+
+-- statement : entryDecl | recordDecl | enumDecl | helperDecl | procedureDecl | ... ;
+helper parse_statement using p as Parser returns Node
+make tok as Token
+set tok to helper peek_token using p
+
+-- skeleton dispatch based on tok kind
+-- when tok kind is TokenKind Entry parse_entry_decl
+-- when tok kind is TokenKind Record parse_record_decl
+-- etc.
+
+make dummy as Node
+set dummy kind to NodeKind Statement
+return dummy
+end
+
+-- entryDecl : ENTRY IDENT NL block END NL ;
+helper parse_entry_decl using p as Parser returns Node
+make node as Node
+set node kind to NodeKind EntryDecl
+make node children as smart_array of Node in AstMemory
+
+helper consume_token using p and TokenKind Entry and "expected 'entry'"
+make name_tok as Token
+set name_tok to helper consume_token using p and TokenKind Ident and "expected entry name"
+set node token to name_tok
+
+-- consume NL, parse block, consume END, NL
+
+return node
+end
+
+-- expr, condition, helperCall, etc. would follow the ANTLR structure:
+-- expr : literal | target | helperCall | enumRef | expr operator expr | '(' expr ')' ;
+
+helper parse_expr using p as Parser returns Node
+-- skeleton: precedence climbing or recursive descent
+make node as Node
+set node kind to NodeKind Expr
+return node
+end
+
+-- =========================================
+-- 9. Frontend driver
+-- =========================================
+
+procedure compile_frontend using src as text returns Node
+make lex as Lexer
+set lex to helper make_lexer using src
+
+make toks as smart_array of Token
+set toks to helper lex_all using lex
+
+make parser as Parser
+set parser to helper make_parser using toks
+
+make ast as Node
+set ast to helper parse_program using parser
+return ast
+end
+
+end
+
+
+
